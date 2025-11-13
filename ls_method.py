@@ -146,7 +146,7 @@ def draw_approximations(ax, df: pd.DataFrame, interval: str, result: Dict):
 
     # Define consistent style per model
     base_styles = {
-        "Polynomial":  dict(color="#ff7f0e", lw=1.5),
+        "Polynomial":  dict(color="#FFFFFF", lw=1.5),
         "Exponential": dict(color="#2ca02c", lw=1.5),
         "Logarithmic": dict(color="#1f77b4", lw=1.5),
         "Power-law":   dict(color="#d62728", lw=1.5),

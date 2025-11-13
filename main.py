@@ -358,6 +358,7 @@ tk.Label(title_frame, text="- Prediction", fg="#cfcfcf", bg="#1f1f23", font=("Sh
 toolbar = tk.Frame(root, bg="#1f1f23")
 toolbar.pack(anchor="w", padx=20, pady=5, fill="x")
 
+
 main_frame = tk.Frame(root, bg="#1f1f23")
 main_frame.pack(padx=30, pady=20, fill="both", expand=True)
 
@@ -367,64 +368,7 @@ canvas_frame.pack(side="left", fill="both", expand=True)
 control_frame = tk.Frame(main_frame, bg="#1f1f23", width=200)
 control_frame.pack(side="left", fill="y", padx=10, pady=10)
 
-# Consider News toggle
-consider_news_var = tk.BooleanVar(value=True)
-news_button = tk.Button(
-    control_frame,
-    text="Consider News: ON",
-    bg="#00cc00",
-    fg="white",
-    font=("Segoe UI", 9, "bold"),
-    relief="flat",
-    activebackground="#009900",
-    activeforeground="white",
-    padx=10,
-    pady=5,
-    command=lambda: toggle_news()
-)
-news_button.pack(anchor="nw", pady=(0, 10))
-
-# Prediction Length Slider
-slider_frame = tk.Frame(control_frame, bg="#1f1f23")
-slider_frame.pack(anchor="nw", pady=(0, 15), fill="x")
-
-tk.Label(slider_frame, text="Prediction Length (days):", fg="#ffffff", bg="#1f1f23",
-         font=("Segoe UI", 9)).pack(anchor="w")
-
-prediction_days_var = tk.IntVar(value=7)  # Default 7 days
-
-days_slider = tk.Scale(
-    slider_frame,
-    from_=1,
-    to=31,
-    orient="horizontal",
-    variable=prediction_days_var,
-    length=180,
-    sliderlength=15,
-    showvalue=True,
-    bg="#1f1f23",
-    fg="#ffffff",
-    troughcolor="#333333",
-    highlightbackground="#1f1f23",
-    highlightcolor="#1f1f23"
-)
-days_slider.pack(anchor="w", pady=(5, 0))
-
-predict_button = tk.Button(
-    control_frame,
-    text="Predict",
-    bg="#f38b00",
-    fg="white",
-    font=("Segoe UI", 10, "bold"),
-    relief="flat",
-    activebackground="#d67a00",
-    activeforeground="white",
-    padx=10,
-    pady=5,
-    command=predict_action
-)
-predict_button.pack(anchor="nw", pady=(10, 5))
-
+#Show approximations
 show_approx_var = tk.BooleanVar(value=False)
 approx_check = tk.Checkbutton(
     control_frame,
@@ -442,10 +386,71 @@ approx_check = tk.Checkbutton(
 )
 approx_check.pack(anchor="nw", pady=(0, 10))
 
+
+#Prediction Length
+slider_frame = tk.Frame(control_frame, bg="#1f1f23")
+slider_frame.pack(anchor="nw", pady=(0, 15), fill="x")
+
+tk.Label(slider_frame, text="Prediction Length (days):", fg="#ffffff", bg="#1f1f23",
+         font=("Segoe UI", 9)).pack(anchor="w")
+
+prediction_days_var = tk.IntVar(value=7)  # Default 7 days
+
+days_slider = tk.Scale(
+    slider_frame,
+    from_=1,
+    to=31,
+    orient="horizontal",
+    variable=prediction_days_var,
+    length=153,
+    sliderlength=15,
+    showvalue=True,
+    bg="#1f1f23",
+    fg="#ffffff",
+    troughcolor="#333333",
+    highlightbackground="#1f1f23",
+    highlightcolor="#1f1f23"
+)
+days_slider.pack(anchor="w", pady=(5, 0))
+
+#Consider News
+consider_news_var = tk.BooleanVar(value=True)
+news_button = tk.Button(
+    control_frame,
+    text="Consider News: ON",
+    bg="#00cc00",
+    fg="white",
+    font=("Segoe UI", 10, "bold"),
+    relief="flat",
+    activebackground="#009900",
+    activeforeground="white",
+    padx=10,
+    pady=5,
+    width=16,
+    command=lambda: toggle_news()
+)
+news_button.pack(anchor="nw", pady=(0, 10))
+
+#Predict
+predict_button = tk.Button(
+    control_frame,
+    text="Predict",
+    bg="#f38b00",
+    fg="white",
+    font=("Segoe UI", 10, "bold"),
+    relief="flat",
+    activebackground="#d67a00",
+    activeforeground="white",
+    padx=10,
+    pady=5,
+    width=16,
+    command=predict_action
+)
+predict_button.pack(anchor="nw", pady=(0, 5))
+
 tf_block = tk.Frame(toolbar, bg="#1f1f23")
 tf_block.pack(side="left", padx=(0, 20))
-tk.Label(tf_block, text="Timeframe", fg="#dcdcdc", bg="#1f1f23", font=("Segoe UI", 10)).pack(anchor="center",
-                                                                                             pady=(0, 3))
+tk.Label(tf_block, text="Timeframe", fg="#dcdcdc", bg="#1f1f23", font=("Segoe UI", 10)).pack(anchor="center",pady=(0, 3))
 
 timeframes = {"1h": "1h", "4h": "4h", "1d": "1d", "5d": "5d", "1wk": "1wk", "1mo": "1mo"}
 timeframe_frame = tk.Frame(tf_block, bg="#1f1f23")
