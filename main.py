@@ -21,6 +21,17 @@ current_price = 0.0
 prediction_data = []
 btc_data_df = None
 
+# Create data folder if it doesn't exist
+def ensure_data_folder():
+    """Ensure the data folder exists before any file operations"""
+    data_folder = "data"
+    if not os.path.exists(data_folder):
+        os.makedirs(data_folder)
+        print(f"Created {data_folder} directory")
+
+# Call this function at the start
+ensure_data_folder()
+
 # event callbacks
 def on_press_left(event):
     global is_panning_left
@@ -73,6 +84,11 @@ def save_btc_data_for_predictor(df, file_path):
     """Saves DataFrame data to JSON in the format TimeSeriesPredictor expects."""
     if df is None or df.empty:
         return False
+
+    # Ensure directory exists for the file path
+    directory = os.path.dirname(file_path)
+    if directory and not os.path.exists(directory):
+        os.makedirs(directory)
 
     df_copy = df.copy()
     if df_copy.index.tz is not None:
