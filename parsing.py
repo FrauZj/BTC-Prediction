@@ -5,15 +5,11 @@ import sys
 import os
 import json
 
-output_folder = "data"
-os.makedirs(output_folder, exist_ok=True)
-
-NEWS_API_KEY = "d7f7f2f45ad14d1cbaa6f68952f8a8e1"
-
+OUTPUT_FOLDER = "data"
+JSON_FILENAME = "news.json"
+NEWS_API_KEY = "d7f7f2f45ad14d1cbaa6f68952f8a8e1"  # Replace if needed
 KEYWORDS = "bitcoin OR crypto OR ethereum OR solana OR nft"
 LANGUAGE = 'en'
-FILENAME = os.path.join(output_folder, "news.json")
-
 
 def get_date_range(time_str):
     now = datetime.now()
@@ -29,24 +25,20 @@ def get_date_range(time_str):
         months = int(time_str.replace('m', ''))
         from_date = now - relativedelta(months=months)
     else:
-        print("Невірний формат інтервалу. Використовуємо 7 днів (1w).")
         from_date = now - timedelta(weeks=1)
 
     if (now - from_date).days > 30:
-        print("NewsAPI зазвичай обмежує пошук 30 днями. Обрізаємо до 30 днів.")
         from_date = now - timedelta(days=30)
 
     return from_date.strftime('%Y-%m-%d'), now.strftime('%Y-%m-%d')
 
-
 def fetch_crypto_news(from_date, to_date):
-    if NEWS_API_KEY == "ВСТАВТЕ_ВАШ_NEWS_API_KEY_СЮДИ":
-        print("\n❗ КЛЮЧ API ВІДСУТНІЙ. Будь ласка, отримайте безкоштовний ключ на NewsAPI.org і вставте його в код.")
+    if NEWS_API_KEY == "ВСТАВТЕ_ВАШ_NEWS_API_KEY_СЮДИ" or not NEWS_API_KEY:
+        print("[News] API Key missing.")
         return []
 
     try:
         newsapi = NewsApiClient(api_key=NEWS_API_KEY)
-
         all_articles = newsapi.get_everything(
             q=KEYWORDS,
             language=LANGUAGE,
@@ -57,27 +49,32 @@ def fetch_crypto_news(from_date, to_date):
         )
 
         if all_articles['status'] == 'ok':
-            print(
-                f"\n✅ Знайдено {all_articles['totalResults']} результатів. Отримано: {len(all_articles['articles'])} статей.")
             return all_articles['articles']
         else:
-            print(f"❌ Помилка NewsAPI: {all_articles.get('message', 'Невідома помилка')}")
+            print(f"[News] API Error: {all_articles.get('message', 'Unknown')}")
             return []
 
     except Exception as e:
-        print(f"❌ Критична помилка підключення або API: {e}")
+        print(f"[News] Connection/API Error: {e}")
         return []
 
+def save_to_json(articles, time_period):
+    os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+    file_path = os.path.join(OUTPUT_FOLDER, JSON_FILENAME)
 
-def save_to_json(articles, filename, time_period):
     if not articles:
-        print("Не знайдено жодної відповідної статті.")
-        return
+        # Create an empty valid JSON
+        empty_data = {
+            "metadata": {"total_articles": 0},
+            "articles": []
+        }
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(empty_data, f, indent=4)
+        return False
 
-    # Transform articles to the desired JSON structure
     news_data = {
         "metadata": {
-            "report_title": "КРИПТОВАЛЮТНІ НОВИНИ",
+            "report_title": "CRYPTO NEWS",
             "generated_at": datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             "requested_period": time_period,
             "source": "NewsAPI.org",
@@ -91,27 +88,26 @@ def save_to_json(articles, filename, time_period):
             "newsletter_name": article['source'].get('name', 'N/A'),
             "data": article.get('publishedAt', 'N/A'),
             "headline": article.get('title', 'N/A'),
-            "description": article.get('description', 'Опис відсутній.'),
+            "description": article.get('description', ''),
             "link": article.get('url', 'N/A')
         }
         news_data["articles"].append(article_data)
 
     try:
-        with open(filename, 'w', encoding='utf-8') as f:
-            json.dump(news_data, f, ensure_ascii=False, indent=4, separators=(',', ': '))
-
-        print(f"\n✅ Успішно збережено {len(articles)} статей у файл: {filename}")
-
+        with open(file_path, 'w', encoding='utf-8') as f:
+            json.dump(news_data, f, ensure_ascii=False, indent=4)
+        print(f"[News] Saved {len(articles)} articles to {file_path}")
+        return True
     except Exception as e:
-        print(f"❌ Помилка при збереженні JSON файлу: {e}")
+        print(f"[News] Save Error: {e}")
+        return False
 
+def run_news_parsing(period="1w"):
+    start_date, end_date = get_date_range(period)
+    print(f"[News] Fetching news from {start_date} to {end_date}...")
+    articles = fetch_crypto_news(start_date, end_date)
+    return save_to_json(articles, period)
 
 if __name__ == "__main__":
-    user_input_time = input("Введіть часовий інтервал для парсингу (наприклад, 1d, 7d, 1m): ")
-
-    start_date, end_date = get_date_range(user_input_time)
-    print(f"Парсинг буде виконано з {start_date} по {end_date}.")
-
-    news_articles = fetch_crypto_news(start_date, end_date)
-
-    save_to_json(news_articles, FILENAME, user_input_time)
+    user_input = input("Enter time period (e.g., 1d, 7d, 1m): ")
+    run_news_parsing(user_input)

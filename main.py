@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, messagebox
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.pyplot as plt
 import matplotlib
@@ -7,38 +7,55 @@ import yfinance as yf
 from datetime import datetime, timedelta
 import os
 import json
-import numpy as np
-import pandas as pd
 
-# Import the consolidated predictor
 from ai_requests import TimeSeriesPredictor
 from ls_method import fit_and_forecast, draw_approximations, DEFAULT_CONFIG
+import crypto
+import parsing
 
-# global vars
 is_panning_left = False
 current_tf = "1h"
 current_price = 0.0
 prediction_data = []
 btc_data_df = None
+DATA_FOLDER = "data"
 
-# Create data folder if it doesn't exist
-def ensure_data_folder():
-    """Ensure the data folder exists before any file operations"""
-    data_folder = "data"
-    if not os.path.exists(data_folder):
-        os.makedirs(data_folder)
-        print(f"Created {data_folder} directory")
 
-# Call this function at the start
-ensure_data_folder()
+def check_and_initialize_data():
+    if not os.path.exists(DATA_FOLDER):
+        os.makedirs(DATA_FOLDER)
+        print(f"Created {DATA_FOLDER}")
 
-# event callbacks
+    price_file = os.path.join(DATA_FOLDER, "btc_prices.json")
+    if not os.path.exists(price_file):
+        print("btc_prices.json not found. Initializing default data...")
+        try:
+            success = crypto.fetch_and_save_btc_data(days=7, interval='1h')
+            if not success:
+                messagebox.showerror("Initialization Error",
+                                     "Failed to download initial BTC data.\nCheck internet connection.")
+        except Exception as e:
+            messagebox.showerror("Initialization Error", f"Critical error fetching BTC data:\n{e}")
+
+    news_file = os.path.join(DATA_FOLDER, "news.json")
+    if not os.path.exists(news_file):
+        print("news.json not found. Initializing default news...")
+        try:
+            parsing.run_news_parsing(period="1w")
+        except Exception as e:
+            print(f"News initialization skipped: {e}")
+
+
+check_and_initialize_data()
+
+
 def on_press_left(event):
     global is_panning_left
     if event.button != 1 or event.inaxes != ax or event.x is None or event.y is None:
         return
     is_panning_left = True
     ax.start_pan(event.x, event.y, 1)
+
 
 def on_release_left(event):
     global is_panning_left
@@ -48,11 +65,13 @@ def on_release_left(event):
     ax.end_pan()
     canvas.draw_idle()
 
+
 def on_move_left(event):
     if event.button != 1 or not is_panning_left or event.inaxes != ax or event.x is None or event.y is None:
         return
     ax.drag_pan(is_panning_left, None, event.x, event.y)
     canvas.draw_idle()
+
 
 def zoom(event):
     if event.inaxes != ax:
@@ -67,6 +86,7 @@ def zoom(event):
     ax.set_xlim(new_left, new_right)
     canvas.draw_idle()
 
+
 def on_motion(event):
     if event.xdata and event.ydata:
         try:
@@ -79,13 +99,11 @@ def on_motion(event):
     else:
         status_label.config(text=f"Current price: ${current_price:.2f}")
 
-# data processing
+
 def save_btc_data_for_predictor(df, file_path):
-    """Saves DataFrame data to JSON in the format TimeSeriesPredictor expects."""
     if df is None or df.empty:
         return False
 
-    # Ensure directory exists for the file path
     directory = os.path.dirname(file_path)
     if directory and not os.path.exists(directory):
         os.makedirs(directory)
@@ -108,9 +126,9 @@ def save_btc_data_for_predictor(df, file_path):
         print(f"Error saving data: {e}")
         return False
 
+
 def load_news_data():
-    """Load news data from news.json file"""
-    news_file_path = "data/news.json"
+    news_file_path = os.path.join(DATA_FOLDER, "news.json")
     news_context = []
 
     if not os.path.exists(news_file_path):
@@ -121,7 +139,7 @@ def load_news_data():
             news_data = json.load(f)
 
         articles = news_data.get('articles', [])
-        for article in articles[:10]:  # Take only latest 10 articles
+        for article in articles[:10]:
             headline = article.get('headline', '')
             description = article.get('description', '')
             news_text = f"{headline}. {description}"
@@ -138,45 +156,37 @@ def load_news_data():
 
     return news_context
 
-def get_predictions_count(timeframe, days):
-    """Calculate number of predictions needed based on timeframe and days"""
-    # Map timeframe to periods per day
-    periods_per_day = {
-        "1h": 24,  # 24 periods per day (1 hour each)
-        "4h": 6,  # 6 periods per day (4 hours each)
-        "1d": 1,  # 1 period per day
-        "5d": 0.2,  # 0.2 periods per day (1 period every 5 days)
-        "1wk": 0.142857,  # ~0.143 periods per day (1 period every 7 days)
-        "1mo": 0.0333  # ~0.033 periods per day (1 period every 30 days)
-    }
 
+def get_predictions_count(timeframe, days):
+    periods_per_day = {
+        "1h": 24, "4h": 6, "1d": 1,
+        "5d": 0.2, "1wk": 0.142857, "1mo": 0.0333
+    }
     periods_per_day_count = periods_per_day.get(timeframe, 1)
     return max(1, int(periods_per_day_count * days))
 
+
 def fetch_btc_data(interval="1h"):
-    """Fetches BTC data and saves it to a global DataFrame."""
     global btc_data_df
 
     end = datetime.now()
-
-    # Adjust days to fetch based on timeframe
     if interval == "1mo":
-        days_to_fetch = 365 * 3  # 3 years for monthly data
+        days_to_fetch = 365 * 3
     elif interval == "1wk":
-        days_to_fetch = 365 * 2  # 2 years for weekly data
+        days_to_fetch = 365 * 2
     elif interval == "5d":
-        days_to_fetch = 365 * 2  # 2 years for 5-day data
+        days_to_fetch = 365 * 2
     elif interval == "1d":
-        days_to_fetch = 365  # 1 year for daily data
+        days_to_fetch = 365
     elif interval == "4h":
-        days_to_fetch = 90  # 3 months for 4-hour data
-    else:  # 1h and others
-        days_to_fetch = 60  # 2 months for hourly data
+        days_to_fetch = 90
+    else:
+        days_to_fetch = 60
 
     start = end - timedelta(days=days_to_fetch)
 
     try:
-        data = yf.download("BTC-USD", start=start, end=end, interval=interval, auto_adjust=False)
+        data = yf.download("BTC-USD", start=start, end=end, interval=interval, auto_adjust=False, progress=False)
         if data.empty:
             raise ValueError(f"No data for {interval}")
         btc_data_df = data
@@ -186,32 +196,31 @@ def fetch_btc_data(interval="1h"):
         btc_data_df = None
         return None
 
+
 def predict_action():
     global prediction_data
 
     if btc_data_df is None or btc_data_df.empty:
-        status_label.config(text="Error: No historical data for prediction.")
+        messagebox.showwarning("Data Error", "No historical data available. Check internet or Yahoo Finance.")
         return
 
     # Calculate number of predictions needed
     prediction_days = prediction_days_var.get()
     NUM_PREDICTIONS = get_predictions_count(current_tf, prediction_days)
 
-    status_label.config(text=f"Starting prediction for {prediction_days} days ({NUM_PREDICTIONS} points)...")
+    status_label.config(text=f"Starting AI prediction ({NUM_PREDICTIONS} points)...")
     root.update_idletasks()
 
-    # Use data folder for temporary files
-    temp_price_path = "data/temp_btc_prices.json"
+    temp_price_path = os.path.join(DATA_FOLDER, "temp_btc_prices.json")
     if not save_btc_data_for_predictor(btc_data_df, temp_price_path):
-        status_label.config(text="Error: Could not save temporary data file.")
+        messagebox.showerror("File Error", "Could not save temporary data file for AI.")
         return
 
-    # Prepare news data if enabled
     temp_news_path = None
     if consider_news_var.get():
         news_context = load_news_data()
         if news_context:
-            temp_news_path = "data/temp_news.json"
+            temp_news_path = os.path.join(DATA_FOLDER, "temp_news.json")
             try:
                 news_data = {
                     "metadata": {"total_articles": len(news_context)},
@@ -225,29 +234,26 @@ def predict_action():
                 temp_news_path = None
 
     try:
-        # Use the consolidated TimeSeriesPredictor from ai_requests.py
+        # Initialize
         predictor = TimeSeriesPredictor(json_file_path=temp_price_path, news_file_path=temp_news_path)
-
-        status_label.config(text=f"Generating {NUM_PREDICTIONS} predictions...")
-        root.update_idletasks()
-
         predictions = predictor.predict(NUM_PREDICTIONS)
 
         if predictions:
-            future_dates = predictor.generate_future_dates(NUM_PREDICTIONS, current_tf)
+            future_dates = predictor.generate_future_dates(len(predictions), current_tf)
             prediction_data = list(zip(future_dates, predictions))
+
             news_status = "with news" if consider_news_var.get() and temp_news_path else "without news"
-            status_label.config(
-                text=f"Prediction ready: {NUM_PREDICTIONS} points ({prediction_days} days) {news_status}")
+            status_label.config(text=f"Prediction Done: {len(predictions)} points {news_status}")
         else:
-            status_label.config(text="Prediction failed.")
-            prediction_data = []
+            raise Exception("Received empty prediction list.")
 
     except Exception as e:
-        status_label.config(text=f"Critical prediction error (Ollama/Network?): {e}")
         prediction_data = []
+        status_label.config(text="Prediction Failed.")
+        messagebox.showerror("AI Prediction Error",
+                             f"Failed to generate prediction.\n\nReason: {str(e)}\n\nEnsure Ollama is running (localhost:11434).")
+
     finally:
-        # Clean up temporary files
         if os.path.exists(temp_price_path):
             os.remove(temp_price_path)
         if temp_news_path and os.path.exists(temp_news_path):
@@ -255,7 +261,6 @@ def predict_action():
 
     update_plot()
 
-# custom gui callbacks
 def toggle_news():
     if consider_news_var.get():
         consider_news_var.set(False)
@@ -264,14 +269,15 @@ def toggle_news():
         consider_news_var.set(True)
         news_button.config(text="Consider News: ON", bg="#00cc00", activebackground="#009900")
 
+
 def change_timeframe(tf):
     global current_tf, prediction_data
     current_tf = tf
     prediction_data = []
     update_plot()
 
+
 def update_plot():
-    """Clears and redraws the main price chart, including predictions."""
     global current_price, prediction_data
     ax.clear()
 
@@ -322,17 +328,11 @@ def update_plot():
     if show_approx_var.get():
         try:
             n_future = get_predictions_count(current_tf, prediction_days_var.get())
-
-            # Optional: tweak LS config here
-            ls_cfg = {
-                **DEFAULT_CONFIG,
-                "poly_deg": 4  # or 7
-            }
+            ls_cfg = {**DEFAULT_CONFIG, "poly_deg": 4}
 
             ls_result = fit_and_forecast(data, current_tf, n_future, ls_cfg)
             draw_approximations(ax, data, current_tf, ls_result)
 
-            # If there is no AI prediction, extend xlim to cover LS future
             if not prediction_data:
                 ax.set_xlim(data.index[0], ls_result["future_times"][-1])
 
@@ -356,10 +356,9 @@ def update_plot():
     fig.subplots_adjust(left=0.05, right=0.98, top=0.95, bottom=0.08)
     canvas.draw()
     root.after(60000, update_plot)
-    status_label.config(text=f"Current price: ${current_price:.2f}")
 
 
-# main loop
+
 root = tk.Tk()
 root.title("BTC-Prediction")
 root.geometry("1000x700")
@@ -374,7 +373,6 @@ tk.Label(title_frame, text="- Prediction", fg="#cfcfcf", bg="#1f1f23", font=("Sh
 toolbar = tk.Frame(root, bg="#1f1f23")
 toolbar.pack(anchor="w", padx=20, pady=5, fill="x")
 
-
 main_frame = tk.Frame(root, bg="#1f1f23")
 main_frame.pack(padx=30, pady=20, fill="both", expand=True)
 
@@ -384,7 +382,6 @@ canvas_frame.pack(side="left", fill="both", expand=True)
 control_frame = tk.Frame(main_frame, bg="#1f1f23", width=200)
 control_frame.pack(side="left", fill="y", padx=10, pady=10)
 
-#Show approximations
 show_approx_var = tk.BooleanVar(value=False)
 approx_check = tk.Checkbutton(
     control_frame,
@@ -402,15 +399,13 @@ approx_check = tk.Checkbutton(
 )
 approx_check.pack(anchor="nw", pady=(0, 10))
 
-
-#Prediction Length
 slider_frame = tk.Frame(control_frame, bg="#1f1f23")
 slider_frame.pack(anchor="nw", pady=(0, 15), fill="x")
 
 tk.Label(slider_frame, text="Prediction Length (days):", fg="#ffffff", bg="#1f1f23",
          font=("Segoe UI", 9)).pack(anchor="w")
 
-prediction_days_var = tk.IntVar(value=7)  # Default 7 days
+prediction_days_var = tk.IntVar(value=7)
 
 days_slider = tk.Scale(
     slider_frame,
@@ -429,7 +424,7 @@ days_slider = tk.Scale(
 )
 days_slider.pack(anchor="w", pady=(5, 0))
 
-#Consider News
+# Button: Consider News
 consider_news_var = tk.BooleanVar(value=True)
 news_button = tk.Button(
     control_frame,
@@ -447,7 +442,6 @@ news_button = tk.Button(
 )
 news_button.pack(anchor="nw", pady=(0, 10))
 
-#Predict
 predict_button = tk.Button(
     control_frame,
     text="Predict",
@@ -466,7 +460,8 @@ predict_button.pack(anchor="nw", pady=(0, 5))
 
 tf_block = tk.Frame(toolbar, bg="#1f1f23")
 tf_block.pack(side="left", padx=(0, 20))
-tk.Label(tf_block, text="Timeframe", fg="#dcdcdc", bg="#1f1f23", font=("Segoe UI", 10)).pack(anchor="center",pady=(0, 3))
+tk.Label(tf_block, text="Timeframe", fg="#dcdcdc", bg="#1f1f23", font=("Segoe UI", 10)).pack(anchor="center",
+                                                                                             pady=(0, 3))
 
 timeframes = {"1h": "1h", "4h": "4h", "1d": "1d", "5d": "5d", "1wk": "1wk", "1mo": "1mo"}
 timeframe_frame = tk.Frame(tf_block, bg="#1f1f23")
